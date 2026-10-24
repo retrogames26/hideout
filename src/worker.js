@@ -81,7 +81,7 @@ class GameRoom {
         server.send(JSON.stringify({
           type: "joined", playerId, roomCode: this.roomCode, host: isHost,
           phase: this.phase, settings: this.settings, boundary: this.boundary,
-          message: isHost ? "Room created! Set a safe zone and share the code with friends." : "You joined the room!"
+          message: isHost ? "Room created! Set a hiding zone and share the code with friends." : "You joined the room!"
         }));
         this.broadcastState();
         return;
@@ -98,7 +98,7 @@ class GameRoom {
         this.broadcastState("Settings saved.");
       } else if (msg.type === "setBoundary" && playerId === this.hostId && this.phase !== "playing") {
         if (!validCoord(msg.lat, -90, 90) || !validCoord(msg.lon, -180, 180)) {
-          this.sendOne(player, "error", { message: "Could not set the safe zone. Check location permission and try again." });
+          this.sendOne(player, "error", { message: "Could not set the hiding zone. Check location permission and try again." });
           return;
         }
         this.settings.radius = clamp(Number(msg.radius) || this.settings.radius, 100, 2000);
