@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#101a22" />
   <title>Hideout — Online Hide & Seek</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -44,9 +45,9 @@
         </div>
         <div class="game-layout">
           <div class="play-panel">
-            <div class="map-toolbar"><span><i class="green-dot"></i> FOREST CLEARING</span><span id="mapHint">WASD / ARROW KEYS TO MOVE</span></div>
-            <div class="map-wrap"><canvas id="map" width="900" height="600" aria-label="Top-down game map"></canvas><div id="mapOverlay" class="map-overlay hidden"></div></div>
-            <div class="controls-row"><span>⌨ <b>WASD</b> or arrows to move</span><span>⌖ Stay inside the circle</span><span>◉ Pings reveal clues</span></div>
+            <div class="map-toolbar"><span><i class="green-dot"></i> REAL-WORLD MAP</span><span><span id="locationStatus">GPS not enabled</span> · <span id="mapHint">LIVE GPS POSITIONS</span></span></div>
+            <div class="map-wrap"><div id="realMap" role="application" aria-label="OpenStreetMap showing the safe play area and players"></div><div id="mapOverlay" class="map-overlay hidden"></div></div>
+            <div class="controls-row"><span>◎ <b>GPS</b> sharing only during active rounds</span><span>⌖ Stay inside the safe zone</span><span>↗ OpenStreetMap</span></div>
             <div id="gameMessage" class="game-message">Waiting for players to join…</div>
           </div>
           <aside class="sidebar">
@@ -57,8 +58,10 @@
             </div>
             <div id="hostSettings" class="side-card">
               <div class="side-title">HOST SETTINGS <span class="host-tag">HOST</span></div>
-              <label for="radius">HIDING AREA RADIUS</label>
-              <div class="range-row"><input id="radius" type="range" min="100" max="270" step="10" value="220"/><strong id="radiusValue">220m</strong></div>
+              <label for="radius">SAFE PLAY AREA RADIUS</label>
+              <div class="range-row"><input id="radius" type="range" min="100" max="2000" step="50" value="500"/><strong id="radiusValue">500m</strong></div>
+              <button id="setBoundary" class="secondary-btn full">◎ Set safe zone to my location</button>
+              <p class="tiny" id="boundaryStatus">Set the play area's centre before starting.</p>
               <label for="pingInterval">HIDER PING INTERVAL</label>
               <select id="pingInterval"><option value="30">Every 30 seconds</option><option value="60" selected>Every 1 minute</option><option value="120">Every 2 minutes</option><option value="180">Every 3 minutes</option><option value="600">Every 10 minutes</option></select>
               <label for="seekersCount">NUMBER OF SEEKERS</label>
@@ -67,7 +70,7 @@
               <button id="startGame" class="primary-btn full">Start game ↗</button>
               <button id="endGame" class="text-btn full hidden">End round</button>
             </div>
-            <div class="side-card rules-card"><div class="side-title">HOW TO PLAY</div><p><b>Hiders</b> move around the forest and stay inside the circle. Timed pings briefly reveal a clue to their position.</p><p><b>Seekers</b> chase down the hiders. Get close and press <kbd>E</kbd> to tag them.</p><p class="tiny">This is a social game prototype. Play fair and have fun.</p></div>
+            <div class="side-card rules-card"><div class="side-title">HOW TO PLAY</div><p><b>Everyone</b> must allow location access. Your GPS position is shared with players in this room while the round is active.</p><p><b>Stay inside</b> the host-set safe zone. The map uses OpenStreetMap street data.</p><p class="tiny">Play outdoors only, obey local rules, and never cross roads or enter private property to chase someone.</p></div>
             <button id="leaveRoom" class="leave-btn">← Leave room</button>
           </aside>
         </div>
@@ -75,6 +78,7 @@
     </main>
     <footer><span>HIDEOUT © 2026</span><span>GOOD HIDING TAKES PRACTICE.</span></footer>
   </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
