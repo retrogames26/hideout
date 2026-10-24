@@ -21,3 +21,10 @@ button,input,select{font:inherit}button{cursor:pointer;transition:transform .15s
 #boundaryStatus{font-size:10px;line-height:1.5;color:#91a4a8;margin:9px 0 2px}
 #setBoundary:disabled{opacity:.65;cursor:wait}
 @media(max-width:720px){#realMap{height:55vh;min-height:340px}.leaflet-control-attribution{font-size:8px!important}}
+
+
+.catch-prompt{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 17px;background:#2a302b;border-top:1px solid #b8f36b55;color:#f2f5f0;font-size:12px}
+.catch-actions{display:flex;gap:8px}
+.catch-actions button{padding:10px 13px;font-size:11px}
+.catch-actions .secondary-btn{background:#26363e}
+@media(max-width:520px){.catch-prompt{align-items:stretch}.catch-actions{width:100%}.catch-actions button{flex:1}}
