@@ -130,11 +130,12 @@ class GameRoom {
         const outside = this.boundary
           ? distanceMeters(this.boundary.lat, this.boundary.lon, lat, lon) > this.boundary.radius
           : true;
+        const boundaryChanged = player.outOfBounds !== outside;
         player.lat = lat;
         player.lon = lon;
         player.accuracy = accuracy;
         player.outOfBounds = outside;
-        this.broadcastState(outside ? player.name + " is outside the safe play area." : undefined);
+        this.broadcastState(boundaryChanged ? (outside ? player.name + " is outside the safe play area." : player.name + " is back inside the safe play area.") : undefined);
         await this.maybePing();
       } else if (msg.type === "tag" && this.phase === "playing" && player.role === "seeker") {
         if (player.lat == null || player.lon == null) {
