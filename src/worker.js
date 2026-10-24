@@ -38,6 +38,7 @@ class GameRoom {
     this.boundary = null;
     this.roomCode = null;
     this.pings = [];
+    this.pendingCatches = new Map();
   }
 
   async fetch(request) {
@@ -69,6 +70,7 @@ class GameRoom {
           this.phase = "waiting";
           this.boundary = null;
           this.pings = [];
+          this.pendingCatches.clear();
         }
         playerId = crypto.randomUUID();
         const isHost = !this.hostId;
@@ -101,14 +103,14 @@ class GameRoom {
         }
         this.settings.radius = clamp(Number(msg.radius) || this.settings.radius, 100, 2000);
         this.boundary = { lat: Number(msg.lat), lon: Number(msg.lon), radius: this.settings.radius };
-        this.broadcastState("Safe zone set. Players must stay inside the marked circle.");
+        this.broadcastState("Hiding zone set. Hiders who leave it will trigger a seeker location ping.");
       } else if (msg.type === "start" && playerId === this.hostId) {
         if (this.players.size < 2) {
           this.sendOne(player, "error", { message: "You need at least 2 players to start." });
           return;
         }
         if (!this.boundary) {
-          this.sendOne(player, "error", { message: "Set the safe play area to your current location before starting." });
+          this.sendOne(player, "error", { message: "Set the hiding zone centre before starting." });
           return;
         }
         const list = [...this.players.values()].sort(() => Math.random() - 0.5);
@@ -135,7 +137,12 @@ class GameRoom {
         player.lon = lon;
         player.accuracy = accuracy;
         player.outOfBounds = outside;
-        this.broadcastState(boundaryChanged ? (outside ? player.name + " is outside the safe play area." : player.name + " is back inside the safe play area.") : undefined);
+        this.broadcastState(boundaryChanged ? (outside ? player.name + " left the hiding zone." : player.name + " returned to the hiding zone.") : undefined);
+        // Crossing the hiding-zone boundary gives seekers a one-time approximate GPS ping.
+        if (boundaryChanged && outside && player.role === "hider") {
+          const ping = { lat: Number(lat.toFixed(3)), lon: Number(lon.toFixed(3)), at: Date.now(), reason: "hider-left-zone" };
+          for (const seeker of this.players.values()) if (seeker.role === "seeker" && seeker.alive) this.sendOne(seeker, "ping", { ping, message: player.name + " left the hiding zone — location pinged!" });
+        }
         await this.maybePing();
       } else if (msg.type === "tag" && this.phase === "playing" && player.role === "seeker") {
         if (player.lat == null || player.lon == null) {
@@ -147,14 +154,28 @@ class GameRoom {
           distanceMeters(player.lat, player.lon, p.lat, p.lon) <= 15
         );
         if (target) {
-          target.alive = false;
-          target.role = "found";
-          this.broadcastState(target.name + " was found!");
-          const remaining = [...this.players.values()].some(p => p.role === "hider" && p.alive);
-          if (!remaining) this.finishRound("Seekers win! All hiders were found.");
+          this.pendingCatches.set(target.id, { seekerId: player.id, requestedAt: Date.now() });
+          this.sendOne(target, "catchRequest", { seekerName: player.name, message: player.name + " says they caught you. Confirm below if you were tagged." });
+          this.sendOne(player, "tagged", { message: "Catch request sent. The hider must confirm they were caught." });
         } else {
           this.sendOne(player, "tagged", { message: "No hider close enough to tag. Get within 15 metres." });
         }
+      } else if (msg.type === "confirmCaught" && this.phase === "playing" && player.role === "hider" && player.alive) {
+        const pending = this.pendingCatches.get(player.id);
+        if (!pending || Date.now() - pending.requestedAt > 30000) {
+          this.pendingCatches.delete(player.id);
+          this.sendOne(player, "error", { message: "No active catch request. Ask the seeker to try again nearby." });
+          return;
+        }
+        player.alive = false;
+        player.role = "found";
+        this.pendingCatches.delete(player.id);
+        this.broadcastState(player.name + " confirmed they were caught!");
+        const remaining = [...this.players.values()].some(p => p.role === "hider" && p.alive);
+        if (!remaining) this.finishRound("Seekers win! All hiders were found.");
+      } else if (msg.type === "denyCaught" && this.phase === "playing" && player.role === "hider") {
+        this.pendingCatches.delete(player.id);
+        this.sendOne(player, "tagged", { message: "Catch request declined. A seeker must get within 15 metres and try again." });
       }
     });
 
@@ -166,6 +187,7 @@ class GameRoom {
   finishRound(message) {
     this.phase = "waiting";
     this.pings = [];
+    this.pendingCatches.clear();
     for (const p of this.players.values()) {
       p.role = "waiting";
       p.alive = true;
@@ -222,6 +244,7 @@ class GameRoom {
       this.phase = "waiting";
       this.boundary = null;
       this.pings = [];
+      this.pendingCatches.clear();
     } else {
       this.broadcastState(p.name + " left the room.");
     }
