@@ -100,7 +100,7 @@ function initMap() {
   }).addTo(state.map);
   state.map.on("click",e=>{
     if(!state.host||state.phase==="playing")return;
-    if(!confirm("Set the safe play area's centre to this map location?"))return;
+    if(!confirm("Set the hiding zone centre to this map location?"))return;
     send("setBoundary",{lat:e.latlng.lat,lon:e.latlng.lng,radius:Number($("radius").value)});
     gameMessage("Updating safe-zone centre…");
   });
@@ -129,7 +129,7 @@ function renderPlayers() {
     const color=p.outOfBounds?"#ff5c67":p.role==="seeker"?"#ffb36c":p.id===state.playerId?"#b8f36b":"#7edbd0";
     const html=`<div class="gps-pin" style="--pin-color:${color}"><span></span></div>`;
     const icon=L.divIcon({className:"gps-marker",html,iconSize:[28,36],iconAnchor:[14,30]});
-    const label=`${escapeHtml(p.name)}${p.id===state.playerId?" (you)":""}${p.outOfBounds?" · OUTSIDE SAFE ZONE":""}`;
+    const label=`${escapeHtml(p.name)}${p.id===state.playerId?" (you)":""}${p.outOfBounds?" · OUTSIDE HIDING ZONE":""}`;
     if(!state.markers.has(p.id)) {
       const marker=L.marker([p.lat,p.lon],{icon}).addTo(state.map);
       marker.bindTooltip(label,{direction:"top",offset:[0,-18]});state.markers.set(p.id,marker);
@@ -154,7 +154,7 @@ function getCurrentPosition() {
   });
 }
 async function setBoundaryFromGPS() {
-  if(!state.host){gameMessage("Only the host can set the safe zone.");return;}
+  if(!state.host){gameMessage("Only the host can set the hiding zone.");return;}
   $("setBoundary").disabled=true;$("setBoundary").textContent="Getting GPS…";
   try {
     const pos=await getCurrentPosition();
