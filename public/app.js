@@ -5,7 +5,7 @@ const state = {
   socket:null, roomCode:null, playerId:null, name:null, host:false, players:[],
   phase:"lobby", radius:500, pingInterval:60, seekersCount:1, me:null,
   boundary:null, watchId:null, map:null, markers:new Map(), zone:null, pingLayers:[],
-  lastLocationAt:0, lastPingAt:0
+  lastLocationAt:0, lastPingAt:0, pendingCatch:false
 };
 
 function message(text){ $("lobbyMessage").textContent=text; }
@@ -22,7 +22,8 @@ function setPhase(phase) {
   $("startGame").classList.toggle("hidden",phase!=="waiting");
   $("endGame").classList.toggle("hidden",phase==="waiting");
   $("hostSettings").classList.toggle("hidden",!state.host);
-  $("mapHint").textContent=phase==="playing"?"LIVE PLAYER GPS · E TO TAG":"LIVE GPS POSITIONS";
+  $("mapHint").textContent=phase==="playing"?"LIVE GPS · E TO REQUEST TAG":"LIVE GPS POSITIONS";
+  if(phase!=="playing") hideCatchPrompt();
   if(phase==="playing") startLocationSharing();
   else stopLocationSharing();
 }
@@ -74,7 +75,14 @@ function handle(d) {
       const ring=L.circle([p.lat,p.lon],{radius:35,color:"#ffb36c",weight:2,fillOpacity:.08}).addTo(state.map);
       state.pingLayers.push(ring);setTimeout(()=>{if(state.map&&state.map.hasLayer(ring))state.map.removeLayer(ring);state.pingLayers=state.pingLayers.filter(x=>x!==ring)},6500);
     }
-    gameMessage("📡 A hider clue was detected. Check the map.");
+    gameMessage(d.message || (d.ping?.reason==="hider-left-zone" ? "📡 A hider left the hiding zone — location pinged!" : "📡 A hider clue was detected. Check the map."));
+    return;
+  }
+  if(d.type==="catchRequest") {
+    state.pendingCatch=true;
+    $("catchPromptText").textContent=d.message || (d.seekerName+" says they caught you.");
+    $("catchPrompt").classList.remove("hidden");
+    gameMessage("A seeker has requested catch confirmation.");
     return;
   }
   if(d.type==="tagged") gameMessage(d.message);
@@ -105,7 +113,7 @@ function updateBoundary() {
   state.zone=L.circle([state.boundary.lat,state.boundary.lon],{
     radius:state.boundary.radius,color:"#b8f36b",weight:3,fillColor:"#b8f36b",fillOpacity:.10
   }).addTo(state.map);
-  state.zone.bindPopup(`Safe play area · ${state.boundary.radius} m radius`);
+  state.zone.bindPopup(`Hiding zone · ${state.boundary.radius} m radius`);
   if(!state.map._hideoutHasFittedZone) {
     state.map.fitBounds(state.zone.getBounds().pad(.18));
     state.map._hideoutHasFittedZone=true;
@@ -136,8 +144,8 @@ function renderPlayers() {
 }
 function updateBoundaryStatus() {
   const el=$("boundaryStatus");
-  if(!state.boundary)el.textContent="Set the play area's centre before starting.";
-  else el.textContent=`Centre set · ${Math.round(state.boundary.lat*10000)/10000}, ${Math.round(state.boundary.lon*10000)/10000} · ${state.boundary.radius} m radius`;
+  if(!state.boundary)el.textContent="Set the hiding-zone centre before starting.";
+  else el.textContent=`Hiding zone set · ${Math.round(state.boundary.lat*10000)/10000}, ${Math.round(state.boundary.lon*10000)/10000} · ${state.boundary.radius} m radius`;
 }
 function getCurrentPosition() {
   return new Promise((resolve,reject)=>{
@@ -152,11 +160,11 @@ async function setBoundaryFromGPS() {
     const pos=await getCurrentPosition();
     send("setBoundary",{lat:pos.coords.latitude,lon:pos.coords.longitude,radius:Number($("radius").value)});
     if(state.map)state.map.setView([pos.coords.latitude,pos.coords.longitude],16);
-    gameMessage("GPS acquired. Setting the safe play area…");
+    gameMessage("GPS acquired. Setting the hiding zone…");
   } catch(e) {
     gameMessage(locationError(e));
   } finally {
-    $("setBoundary").disabled=false;$("setBoundary").textContent="◎ Set safe zone to my location";
+    $("setBoundary").disabled=false;$("setBoundary").textContent="◎ Set hiding zone to my location";
   }
 }
 function locationError(e) {
@@ -201,6 +209,9 @@ $("joinRoom").onclick=()=>{const code=$("roomCode").value.trim().toUpperCase();i
 $("roomCode").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6));
 $("radius").addEventListener("input",e=>{$("radiusValue").textContent=e.target.value+"m";});
 $("setBoundary").onclick=setBoundaryFromGPS;
+function hideCatchPrompt(){state.pendingCatch=false;$("catchPrompt").classList.add("hidden");}
+$("confirmCaught").onclick=()=>{if(state.pendingCatch)send("confirmCaught");hideCatchPrompt();gameMessage("Catch confirmed.");};
+$("denyCaught").onclick=()=>{if(state.pendingCatch)send("denyCaught");hideCatchPrompt();gameMessage("Catch declined.");};
 $("saveSettings").onclick=()=>send("settings",{radius:Number($("radius").value),pingInterval:Number($("pingInterval").value),seekersCount:Number($("seekersCount").value)});
 $("startGame").onclick=()=>send("start");
 $("endGame").onclick=()=>send("end");
