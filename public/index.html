@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101a22" />
+  <title>Hideout — Online Hide & Seek</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#"><span class="brand-mark">H</span><span>HIDEOUT<span class="brand-dot">.</span><small>ONLINE HIDE & SEEK</small></span></a>
+      <div class="live-pill"><span></span> REAL-TIME MULTIPLAYER</div>
+    </header>
+    <main>
+      <section id="lobby" class="lobby">
+        <div class="hero-copy">
+          <div class="eyebrow">YOUR FRIENDS. YOUR ROOM. YOUR GAME.</div>
+          <h1>Ready or not,<br/><em>here we come.</em></h1>
+          <p>Create a private room, invite your friends, and see who can stay hidden until the clock runs out.</p>
+          <div class="feature-row">
+            <div><b>01</b><span>Private rooms</span></div>
+            <div><b>02</b><span>Random seekers</span></div>
+            <div><b>03</b><span>Radar pings</span></div>
+          </div>
+        </div>
+        <div class="lobby-card">
+          <div class="card-top"><span class="status-dot"></span> START A SESSION</div>
+          <label for="playerName">YOUR PLAYER NAME</label>
+          <input id="playerName" maxlength="18" placeholder="e.g. SneakyFox" value="" />
+          <button id="createRoom" class="primary-btn">Create a room <span>↗</span></button>
+          <div class="or"><span></span> OR JOIN YOUR FRIENDS <span></span></div>
+          <label for="roomCode">ROOM CODE</label>
+          <div class="join-row"><input id="roomCode" maxlength="6" placeholder="ABC123" autocomplete="off"/><button id="joinRoom" class="secondary-btn">Join</button></div>
+          <p id="lobbyMessage" class="message" aria-live="polite"></p>
+          <div class="privacy-note">✦ No account required. Just pick a name and play.</div>
+        </div>
+      </section>
+      <section id="game" class="game hidden">
+        <div class="game-heading">
+          <div><div class="eyebrow">PRIVATE SESSION</div><h2>Hideout <span id="roundBadge" class="round-badge">WAITING</span></h2></div>
+          <div class="room-code-box"><small>ROOM CODE</small><strong id="activeRoomCode">------</strong><button id="copyCode" title="Copy room code">Copy</button></div>
+        </div>
+        <div class="game-layout">
+          <div class="play-panel">
+            <div class="map-toolbar"><span><i class="green-dot"></i> FOREST CLEARING</span><span id="mapHint">WASD / ARROW KEYS TO MOVE</span></div>
+            <div class="map-wrap"><canvas id="map" width="900" height="600" aria-label="Top-down game map"></canvas><div id="mapOverlay" class="map-overlay hidden"></div></div>
+            <div class="controls-row"><span>⌨ <b>WASD</b> or arrows to move</span><span>⌖ Stay inside the circle</span><span>◉ Pings reveal clues</span></div>
+            <div id="gameMessage" class="game-message">Waiting for players to join…</div>
+          </div>
+          <aside class="sidebar">
+            <div class="side-card">
+              <div class="side-title">PLAYERS <span id="playerCount">0</span></div>
+              <div id="playersList" class="players-list"></div>
+              <div class="side-foot">Need at least 2 players to start.</div>
+            </div>
+            <div id="hostSettings" class="side-card">
+              <div class="side-title">HOST SETTINGS <span class="host-tag">HOST</span></div>
+              <label for="radius">HIDING AREA RADIUS</label>
+              <div class="range-row"><input id="radius" type="range" min="100" max="270" step="10" value="220"/><strong id="radiusValue">220m</strong></div>
+              <label for="pingInterval">HIDER PING INTERVAL</label>
+              <select id="pingInterval"><option value="30">Every 30 seconds</option><option value="60" selected>Every 1 minute</option><option value="120">Every 2 minutes</option><option value="180">Every 3 minutes</option><option value="600">Every 10 minutes</option></select>
+              <label for="seekersCount">NUMBER OF SEEKERS</label>
+              <select id="seekersCount"><option value="1" selected>1 seeker</option><option value="2">2 seekers</option><option value="3">3 seekers</option></select>
+              <button id="saveSettings" class="secondary-btn full">Save settings</button>
+              <button id="startGame" class="primary-btn full">Start game ↗</button>
+              <button id="endGame" class="text-btn full hidden">End round</button>
+            </div>
+            <div class="side-card rules-card"><div class="side-title">HOW TO PLAY</div><p><b>Hiders</b> move around the forest and stay inside the circle. Timed pings briefly reveal a clue to their position.</p><p><b>Seekers</b> chase down the hiders. Get close and press <kbd>E</kbd> to tag them.</p><p class="tiny">This is a social game prototype. Play fair and have fun.</p></div>
+            <button id="leaveRoom" class="leave-btn">← Leave room</button>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <footer><span>HIDEOUT © 2026</span><span>GOOD HIDING TAKES PRACTICE.</span></footer>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
