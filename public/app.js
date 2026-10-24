@@ -1,85 +1,215 @@
-const $ = (id) => document.getElementById(id);
-const state = { socket:null, roomCode:null, playerId:null, name:null, host:false, players:[], phase:"lobby", radius:220, pingInterval:60, seekersCount:1, me:null, pings:[], lastPingAt:0, keys:new Set(), lastMove:0, world:{w:900,h:600}, mapSeed:1337 };
-const canvas=$("map"), ctx=canvas.getContext("2d");
-const random=(seed)=>{let x=Math.sin(seed*127.1+311.7)*43758.5453;return x-Math.floor(x)};
-function message(text){$("lobbyMessage").textContent=text}
-function gameMessage(text){$("gameMessage").textContent=text}
-function send(type,data={}){if(state.socket&&state.socket.readyState===WebSocket.OPEN)state.socket.send(JSON.stringify({type,...data}))}
-function setPhase(phase){state.phase=phase;$("roundBadge").textContent=phase.toUpperCase();$("startGame").classList.toggle("hidden",phase!=="waiting");$("endGame").classList.toggle("hidden",phase==="waiting");$("hostSettings").classList.toggle("hidden",!state.host);$("mapHint").textContent=phase==="playing"?"WASD / ARROWS TO MOVE · E TO TAG":"WASD / ARROW KEYS TO MOVE"}
-function connect(code,create=false){
-  const name=$("playerName").value.trim()||"Player"+Math.floor(Math.random()*900+100);
-  state.name=name;state.roomCode=code;
-  const scheme=location.protocol==="https:"?"wss:":"ws:";
-  const url=`${scheme}//${location.host}/api/room/${code}`;
-  const ws=new WebSocket(url);state.socket=ws;
-  ws.addEventListener("open",()=>ws.send(JSON.stringify({type:create?"create":"join",name,playerId:state.playerId})));
-  ws.addEventListener("message",event=>{let data;try{data=JSON.parse(event.data)}catch{return}handle(data)});
-  ws.addEventListener("close",()=>{if(state.phase!=="lobby")gameMessage("Connection closed. Refresh to reconnect.")});
-  ws.addEventListener("error",()=>{message("Could not connect. Check your connection and try again.")});
+const $ = id => document.getElementById(id);
+const state = {
+  socket:null, roomCode:null, playerId:null, name:null, host:false, players:[],
+  phase:"lobby", radius:500, pingInterval:60, seekersCount:1, me:null,
+  boundary:null, watchId:null, map:null, markers:new Map(), zone:null, pingLayers:[],
+  lastLocationAt:0, lastPingAt:0
+};
+
+function message(text){ $("lobbyMessage").textContent=text; }
+function gameMessage(text){ $("gameMessage").textContent=text; }
+function send(type,data={}) {
+  if(state.socket && state.socket.readyState===WebSocket.OPEN) state.socket.send(JSON.stringify({type,...data}));
 }
-function handle(d){
-  if(d.type==="error"){message(d.message||"Something went wrong.");gameMessage(d.message||"Something went wrong.");return}
-  if(d.type==="joined"){
-    state.playerId=d.playerId;state.roomCode=d.roomCode;state.host=d.host;state.radius=d.settings.radius;state.pingInterval=d.settings.pingInterval;state.seekersCount=d.settings.seekersCount;
-    $("activeRoomCode").textContent=d.roomCode;$("radius").value=state.radius;$("radiusValue").textContent=state.radius+"m";$("pingInterval").value=String(state.pingInterval);$("seekersCount").value=String(state.seekersCount);
-    $("lobby").classList.add("hidden");$("game").classList.remove("hidden");setPhase(d.phase);gameMessage(d.message||"Waiting for players to join…");return;
-  }
-  if(d.type==="state"){
-    state.players=d.players||[];state.phase=d.phase;state.radius=d.settings.radius;state.pingInterval=d.settings.pingInterval;state.seekersCount=d.settings.seekersCount;state.host=d.hostId===state.playerId;
-    state.me=state.players.find(p=>p.id===state.playerId)||null;
-    $("playerCount").textContent=state.players.length;
-    $("hostSettings").classList.toggle("hidden",!state.host);
-    $("radius").value=state.radius;$("radiusValue").textContent=state.radius+"m";$("pingInterval").value=String(state.pingInterval);$("seekersCount").value=String(state.seekersCount);
-    $("playersList").innerHTML=state.players.map(p=>`<div class="player-item"><div class="avatar">${escapeHtml(p.name.slice(0,1).toUpperCase())}</div><span class="player-name">${escapeHtml(p.name)}${p.id===state.playerId?" (you)":""}</span><span class="role ${p.role==="seeker"?"seeker":""}">${p.role==="seeker"?"SEEKER":p.role==="hider"?"HIDER":"WAITING"}</span></div>`).join("");
-    setPhase(d.phase);if(d.message)gameMessage(d.message);
-    if(d.pings)state.pings=d.pings;
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function setPhase(phase) {
+  state.phase=phase;
+  $("roundBadge").textContent=phase.toUpperCase();
+  $("startGame").classList.toggle("hidden",phase!=="waiting");
+  $("endGame").classList.toggle("hidden",phase==="waiting");
+  $("hostSettings").classList.toggle("hidden",!state.host);
+  $("mapHint").textContent=phase==="playing"?"LIVE PLAYER GPS · E TO TAG":"LIVE GPS POSITIONS";
+  if(phase==="playing") startLocationSharing();
+  else stopLocationSharing();
+}
+function connect(code,create=false) {
+  if(state.socket) { try { state.socket.close(); } catch {} }
+  const name=$("playerName").value.trim()||"Player"+Math.floor(Math.random()*900+100);
+  state.name=name; state.roomCode=code;
+  const scheme=location.protocol==="https:"?"wss:":"ws:";
+  const ws=new WebSocket(`${scheme}//${location.host}/api/room/${code}`);
+  state.socket=ws;
+  ws.addEventListener("open",()=>ws.send(JSON.stringify({type:create?"create":"join",name})));
+  ws.addEventListener("message",event=>{let d;try{d=JSON.parse(event.data)}catch{return}handle(d)});
+  ws.addEventListener("close",()=>{stopLocationSharing();if(state.phase!=="lobby")gameMessage("Connection closed. Location sharing stopped. Reconnect to continue.")});
+  ws.addEventListener("error",()=>message("Could not connect. Check your connection and try again."));
+}
+function handle(d) {
+  if(d.type==="error"){message(d.message||"Something went wrong.");gameMessage(d.message||"Something went wrong.");return;}
+  if(d.type==="joined") {
+    state.playerId=d.playerId;state.roomCode=d.roomCode;state.host=d.host;
+    state.radius=d.settings.radius;state.pingInterval=d.settings.pingInterval;state.seekersCount=d.settings.seekersCount;state.boundary=d.boundary||null;
+    $("activeRoomCode").textContent=d.roomCode;
+    $("radius").value=state.radius;$("radiusValue").textContent=state.radius+"m";
+    $("pingInterval").value=String(state.pingInterval);$("seekersCount").value=String(state.seekersCount);
+    $("lobby").classList.add("hidden");$("game").classList.remove("hidden");
+    initMap();updateBoundary();setPhase(d.phase);updateBoundaryStatus();
+    gameMessage(d.message||"Waiting for players to join…");
     return;
   }
-  if(d.type==="ping"){state.pings.push({...d.ping,receivedAt:Date.now()});gameMessage("📡 A hider ping was detected! Check the map for a temporary clue.");return}
-  if(d.type==="tagged"){gameMessage(d.message);return}
-  if(d.type==="left"){gameMessage(d.message||"A player left.");}
+  if(d.type==="state") {
+    const oldPhase=state.phase;
+    state.players=d.players||[];state.host=d.hostId===state.playerId;
+    state.me=state.players.find(p=>p.id===state.playerId)||null;
+    state.radius=d.settings?.radius||state.radius;
+    state.pingInterval=d.settings?.pingInterval||state.pingInterval;
+    state.seekersCount=d.settings?.seekersCount||state.seekersCount;
+    state.boundary=d.boundary||null;
+    $("playerCount").textContent=state.players.length;
+    $("hostSettings").classList.toggle("hidden",!state.host);
+    $("radius").value=state.radius;$("radiusValue").textContent=state.radius+"m";
+    $("pingInterval").value=String(state.pingInterval);$("seekersCount").value=String(state.seekersCount);
+    $("playersList").innerHTML=state.players.map(p=>`<div class="player-item"><div class="avatar">${escapeHtml(p.name.slice(0,1).toUpperCase())}</div><span class="player-name">${escapeHtml(p.name)}${p.id===state.playerId?" (you)":""}</span><span class="role ${p.role==="seeker"?"seeker":""}">${p.outOfBounds?"OUTSIDE":p.role==="seeker"?"SEEKER":p.role==="hider"?"HIDER":"WAITING"}</span></div>`).join("");
+    setPhase(d.phase);updateBoundary();renderPlayers();updateBoundaryStatus();
+    if(d.message)gameMessage(d.message);
+    if(oldPhase==="playing"&&d.phase!=="playing")clearPingLayers();
+    return;
+  }
+  if(d.type==="ping") {
+    const p=d.ping;
+    if(p&&state.map&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)) {
+      const ring=L.circle([p.lat,p.lon],{radius:35,color:"#ffb36c",weight:2,fillOpacity:.08}).addTo(state.map);
+      state.pingLayers.push(ring);setTimeout(()=>{if(state.map&&state.map.hasLayer(ring))state.map.removeLayer(ring);state.pingLayers=state.pingLayers.filter(x=>x!==ring)},6500);
+    }
+    gameMessage("📡 A hider clue was detected. Check the map.");
+    return;
+  }
+  if(d.type==="tagged") gameMessage(d.message);
 }
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function makeCode(){return Array.from(crypto.getRandomValues(new Uint8Array(6))).map(x=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[x%32]).join("")}
-$("createRoom").onclick=()=>{message("");connect(makeCode(),true)};
-$("joinRoom").onclick=()=>{const code=$("roomCode").value.trim().toUpperCase();if(code.length<4){message("Enter the room code your host shared.");return}message("");connect(code,false)};
+function makeCode() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(6))).map(x=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[x%32]).join("");
+}
+
+function initMap() {
+  if(state.map || !window.L) return;
+  state.map=L.map("realMap",{zoomControl:true}).setView([20,0],2);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    maxZoom:19,
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
+  }).addTo(state.map);
+  state.map.on("click",e=>{
+    if(!state.host||state.phase==="playing")return;
+    if(!confirm("Set the safe play area's centre to this map location?"))return;
+    send("setBoundary",{lat:e.latlng.lat,lon:e.latlng.lng,radius:Number($("radius").value)});
+    gameMessage("Updating safe-zone centre…");
+  });
+  setTimeout(()=>state.map.invalidateSize(),150);
+}
+function updateBoundary() {
+  if(!state.map)return;
+  if(state.zone){state.map.removeLayer(state.zone);state.zone=null;}
+  if(!state.boundary)return;
+  state.zone=L.circle([state.boundary.lat,state.boundary.lon],{
+    radius:state.boundary.radius,color:"#b8f36b",weight:3,fillColor:"#b8f36b",fillOpacity:.10
+  }).addTo(state.map);
+  state.zone.bindPopup(`Safe play area · ${state.boundary.radius} m radius`);
+  if(!state.map._hideoutHasFittedZone) {
+    state.map.fitBounds(state.zone.getBounds().pad(.18));
+    state.map._hideoutHasFittedZone=true;
+  }
+}
+function renderPlayers() {
+  if(!state.map)return;
+  const active=state.phase==="playing";
+  const seen=new Set();
+  for(const p of state.players) {
+    if(!active||!Number.isFinite(p.lat)||!Number.isFinite(p.lon))continue;
+    seen.add(p.id);
+    const color=p.outOfBounds?"#ff5c67":p.role==="seeker"?"#ffb36c":p.id===state.playerId?"#b8f36b":"#7edbd0";
+    const html=`<div class="gps-pin" style="--pin-color:${color}"><span></span></div>`;
+    const icon=L.divIcon({className:"gps-marker",html,iconSize:[28,36],iconAnchor:[14,30]});
+    const label=`${escapeHtml(p.name)}${p.id===state.playerId?" (you)":""}${p.outOfBounds?" · OUTSIDE SAFE ZONE":""}`;
+    if(!state.markers.has(p.id)) {
+      const marker=L.marker([p.lat,p.lon],{icon}).addTo(state.map);
+      marker.bindTooltip(label,{direction:"top",offset:[0,-18]});state.markers.set(p.id,marker);
+    } else {
+      const marker=state.markers.get(p.id);
+      marker.setLatLng([p.lat,p.lon]);marker.setIcon(icon);marker.setTooltipContent(label);
+    }
+  }
+  for(const [id,marker] of state.markers) {
+    if(!seen.has(id)){state.map.removeLayer(marker);state.markers.delete(id);}
+  }
+}
+function updateBoundaryStatus() {
+  const el=$("boundaryStatus");
+  if(!state.boundary)el.textContent="Set the play area's centre before starting.";
+  else el.textContent=`Centre set · ${Math.round(state.boundary.lat*10000)/10000}, ${Math.round(state.boundary.lon*10000)/10000} · ${state.boundary.radius} m radius`;
+}
+function getCurrentPosition() {
+  return new Promise((resolve,reject)=>{
+    if(!("geolocation" in navigator)){reject(new Error("This browser does not support GPS location."));return;}
+    navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+  });
+}
+async function setBoundaryFromGPS() {
+  if(!state.host){gameMessage("Only the host can set the safe zone.");return;}
+  $("setBoundary").disabled=true;$("setBoundary").textContent="Getting GPS…";
+  try {
+    const pos=await getCurrentPosition();
+    send("setBoundary",{lat:pos.coords.latitude,lon:pos.coords.longitude,radius:Number($("radius").value)});
+    if(state.map)state.map.setView([pos.coords.latitude,pos.coords.longitude],16);
+    gameMessage("GPS acquired. Setting the safe play area…");
+  } catch(e) {
+    gameMessage(locationError(e));
+  } finally {
+    $("setBoundary").disabled=false;$("setBoundary").textContent="◎ Set safe zone to my location";
+  }
+}
+function locationError(e) {
+  if(e?.code===1)return "Location permission was denied. Allow location access in your browser settings and try again.";
+  if(e?.code===2)return "Your location is unavailable. Try outdoors with device location enabled.";
+  if(e?.code===3)return "GPS timed out. Try again in a moment.";
+  return e?.message||"Could not get your location.";
+}
+function startLocationSharing() {
+  if(state.watchId!==null||state.phase!=="playing")return;
+  if(!navigator.geolocation){$("locationStatus").textContent="GPS unavailable";gameMessage("This browser does not support GPS. Use a location-enabled browser.");return;}
+  $("locationStatus").textContent="Requesting GPS permission…";
+  state.watchId=navigator.geolocation.watchPosition(pos=>{
+    if(state.phase!=="playing")return;
+    const now=Date.now();
+    if(now-state.lastLocationAt<1200)return;
+    state.lastLocationAt=now;
+    $("locationStatus").textContent=`GPS live · ±${Math.round(pos.coords.accuracy)}m`;
+    send("location",{lat:pos.coords.latitude,lon:pos.coords.longitude,accuracy:pos.coords.accuracy});
+    if(state.map&&state.map.getZoom()<13)state.map.setView([pos.coords.latitude,pos.coords.longitude],15);
+  },err=>{
+    $("locationStatus").textContent="GPS permission needed";
+    gameMessage(locationError(err));
+  },{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+}
+function stopLocationSharing() {
+  if(state.watchId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(state.watchId);
+  state.watchId=null;state.lastLocationAt=0;
+  if($("locationStatus"))$("locationStatus").textContent="GPS sharing stopped";
+  if(state.map) {
+    for(const marker of state.markers.values())state.map.removeLayer(marker);
+    state.markers.clear();
+  }
+}
+function clearPingLayers() {
+  if(state.map)for(const layer of state.pingLayers)state.map.removeLayer(layer);
+  state.pingLayers=[];
+}
+
+$("createRoom").onclick=()=>{message("");connect(makeCode(),true);};
+$("joinRoom").onclick=()=>{const code=$("roomCode").value.trim().toUpperCase();if(code.length<4){message("Enter the room code your host shared.");return;}message("");connect(code,false);};
 $("roomCode").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6));
-$("radius").addEventListener("input",e=>$("radiusValue").textContent=e.target.value+"m");
+$("radius").addEventListener("input",e=>{$("radiusValue").textContent=e.target.value+"m";});
+$("setBoundary").onclick=setBoundaryFromGPS;
 $("saveSettings").onclick=()=>send("settings",{radius:Number($("radius").value),pingInterval:Number($("pingInterval").value),seekersCount:Number($("seekersCount").value)});
 $("startGame").onclick=()=>send("start");
 $("endGame").onclick=()=>send("end");
-$("copyCode").onclick=async()=>{try{await navigator.clipboard.writeText(state.roomCode);$("copyCode").textContent="Copied!"}catch{$("copyCode").textContent=state.roomCode}setTimeout(()=>$("copyCode").textContent="Copy",1300)};
-$("leaveRoom").onclick=()=>{if(state.socket)state.socket.close();state.socket=null;state.phase="lobby";state.roomCode=null;state.players=[];$("game").classList.add("hidden");$("lobby").classList.remove("hidden");message("")};
-window.addEventListener("keydown",e=>{if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();state.keys.add(e.key.toLowerCase());if(e.key.toLowerCase()==="e")send("tag")});
-window.addEventListener("keyup",e=>state.keys.delete(e.key.toLowerCase()));
-function moveLoop(now){
-  if(state.phase==="playing"&&state.me&&now-state.lastMove>70){
-    let dx=0,dy=0;if(state.keys.has("w")||state.keys.has("arrowup"))dy--;if(state.keys.has("s")||state.keys.has("arrowdown"))dy++;if(state.keys.has("a")||state.keys.has("arrowleft"))dx--;if(state.keys.has("d")||state.keys.has("arrowright"))dx++;
-    if(dx||dy){const len=Math.hypot(dx,dy)||1;send("move",{dx:dx/len,dy:dy/len});state.lastMove=now}
-  }
-  draw();requestAnimationFrame(moveLoop)
-}
-function draw(){
-  const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);
-  ctx.fillStyle="#315744";ctx.fillRect(0,0,w,h);
-  // Stylized grass patches and forest canopy.
-  for(let i=0;i<180;i++){const x=random(i+2)*w,y=random(i+555)*h;ctx.fillStyle=i%2?"#37634a":"#2c503f";ctx.beginPath();ctx.ellipse(x,y,8+random(i+8)*18,5+random(i+9)*12,random(i+11)*3,0,Math.PI*2);ctx.fill()}
-  // Winding paths.
-  ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle="#b3a17b";ctx.lineWidth=36;ctx.beginPath();ctx.moveTo(-20,450);ctx.bezierCurveTo(180,380,170,210,390,275);ctx.bezierCurveTo(590,340,620,90,920,135);ctx.stroke();
-  ctx.strokeStyle="#d0bd91";ctx.lineWidth=23;ctx.stroke();
-  // Pond.
-  ctx.fillStyle="#477f87";ctx.beginPath();ctx.ellipse(710,440,100,57,-.2,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#78a8a2";ctx.lineWidth=4;ctx.stroke();
-  // Trees.
-  for(let i=0;i<65;i++){const x=random(i+90)*w,y=random(i+190)*h;if((x>280&&x<540&&y>220&&y<350)||(x>610&&x<820&&y>390&&y<500))continue;drawTree(x,y,0.55+random(i+80)*.65)}
-  // Playable circle.
-  const cx=w/2,cy=h/2,r=Math.min(w,h)*(.18+state.radius/1000);
-  ctx.save();ctx.setLineDash([10,8]);ctx.strokeStyle="#c2f27c";ctx.lineWidth=3;ctx.fillStyle="#b8f36b0c";ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
-  // Ping clues, visible to seekers only.
-  const now=Date.now();state.pings=state.pings.filter(p=>now-(p.receivedAt||now)<6500);
-  state.pings.forEach(p=>{if(state.me?.role==="seeker"&&p.x!=null){const x=p.x/900*w,y=p.y/600*h;ctx.beginPath();ctx.arc(x,y,25+((now-(p.receivedAt||now))%900)/900*45,0,Math.PI*2);ctx.strokeStyle="#ffb36caa";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#ffb36c";ctx.font="bold 12px Manrope";ctx.fillText("PING",x+12,y-12)}})
-  state.players.forEach(p=>{const x=(p.x||450)/900*w,y=(p.y||300)/600*h;drawPlayer(x,y,p)});
-  ctx.fillStyle="#eff8e8";ctx.font="11px 'DM Mono'";ctx.fillText("FOREST ZONE",18,24);
-}
-function drawTree(x,y,s){ctx.fillStyle="#1d392d";ctx.beginPath();ctx.ellipse(x+3*s,y+8*s,17*s,7*s,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#6b5237";ctx.fillRect(x-3*s,y,6*s,16*s);ctx.fillStyle="#1d4936";ctx.beginPath();ctx.moveTo(x,y-29*s);ctx.lineTo(x-20*s,y+4*s);ctx.lineTo(x+20*s,y+4*s);ctx.closePath();ctx.fill();ctx.fillStyle="#2e6545";ctx.beginPath();ctx.moveTo(x,y-39*s);ctx.lineTo(x-16*s,y-9*s);ctx.lineTo(x+16*s,y-9*s);ctx.closePath();ctx.fill()}
-function drawPlayer(x,y,p){const mine=p.id===state.playerId;ctx.fillStyle=p.role==="seeker"?"#ffb36c":mine?"#d4ff91":"#c2e6db";ctx.beginPath();ctx.arc(x,y,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#14251d";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#14251d";ctx.beginPath();ctx.arc(x-3,y-2,1.5,0,Math.PI*2);ctx.arc(x+3,y-2,1.5,0,Math.PI*2);ctx.fill();if(mine||p.role==="seeker"){ctx.font="bold 12px Manrope";ctx.textAlign="center";ctx.fillStyle="#fff";ctx.fillText(p.name,x,y-17);ctx.textAlign="left"}}
-requestAnimationFrame(moveLoop);
+$("copyCode").onclick=async()=>{try{await navigator.clipboard.writeText(state.roomCode);$("copyCode").textContent="Copied!";}catch{$("copyCode").textContent=state.roomCode;}setTimeout(()=>$("copyCode").textContent="Copy",1300);};
+$("leaveRoom").onclick=()=>{
+  stopLocationSharing();clearPingLayers();
+  if(state.socket)state.socket.close();
+  state.socket=null;state.phase="lobby";state.roomCode=null;state.players=[];state.boundary=null;state.host=false;
+  state.markers.clear();state.zone=null;
+  $("game").classList.add("hidden");$("lobby").classList.remove("hidden");message("");
+};
+window.addEventListener("keydown",e=>{if(e.key.toLowerCase()==="e"&&state.phase==="playing"&&state.me?.role==="seeker")send("tag");});
+window.addEventListener("beforeunload",stopLocationSharing);
