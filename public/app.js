@@ -1,4 +1,6 @@
 const $ = id => document.getElementById(id);
+// Public Pages frontend; multiplayer WebSocket API is hosted by the separate Cloudflare Worker.
+const MULTIPLAYER_WORKER_URL = "wss://hideout.eshaan-automotivemail.workers.dev";
 const state = {
   socket:null, roomCode:null, playerId:null, name:null, host:false, players:[],
   phase:"lobby", radius:500, pingInterval:60, seekersCount:1, me:null,
@@ -28,8 +30,7 @@ function connect(code,create=false) {
   if(state.socket) { try { state.socket.close(); } catch {} }
   const name=$("playerName").value.trim()||"Player"+Math.floor(Math.random()*900+100);
   state.name=name; state.roomCode=code;
-  const scheme=location.protocol==="https:"?"wss:":"ws:";
-  const ws=new WebSocket(`${scheme}//${location.host}/api/room/${code}`);
+  const ws=new WebSocket(`${MULTIPLAYER_WORKER_URL}/api/room/${code}`);
   state.socket=ws;
   ws.addEventListener("open",()=>ws.send(JSON.stringify({type:create?"create":"join",name})));
   ws.addEventListener("message",event=>{let d;try{d=JSON.parse(event.data)}catch{return}handle(d)});
