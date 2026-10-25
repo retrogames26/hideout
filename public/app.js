@@ -204,8 +204,28 @@ function clearPingLayers() {
   state.pingLayers=[];
 }
 
-$("createRoom").onclick=()=>{message("");connect(makeCode(),true);};
-$("joinRoom").onclick=()=>{const code=$("roomCode").value.trim().toUpperCase();if(code.length<4){message("Enter the room code your host shared.");return;}message("");connect(code,false);};
+async function requestLocationThenConnect(code,create=false) {
+  message("");
+  $("createRoom").disabled=true;
+  $("joinRoom").disabled=true;
+  message("Allow location access to join Hideout…");
+  try {
+    await getCurrentPosition();
+    message("");
+    connect(code,create);
+  } catch(e) {
+    message("Location permission is required to join or create a room. " + locationError(e));
+  } finally {
+    $("createRoom").disabled=false;
+    $("joinRoom").disabled=false;
+  }
+}
+$("createRoom").onclick=()=>requestLocationThenConnect(makeCode(),true);
+$("joinRoom").onclick=()=>{
+  const code=$("roomCode").value.trim().toUpperCase();
+  if(code.length<4){message("Enter the room code your host shared.");return;}
+  requestLocationThenConnect(code,false);
+};
 $("roomCode").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6));
 $("radius").addEventListener("input",e=>{$("radiusValue").textContent=e.target.value+"m";});
 $("setBoundary").onclick=setBoundaryFromGPS;
