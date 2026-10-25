@@ -208,13 +208,27 @@ async function requestLocationThenConnect(code,create=false) {
   message("");
   $("createRoom").disabled=true;
   $("joinRoom").disabled=true;
-  message("Allow location access to join Hideout…");
+  message("Location is required. Your browser should ask for permission now…");
   try {
+    if (!window.isSecureContext) throw new Error("Location access requires HTTPS. Open https://hideoutonline.pages.dev.");
+    if (!("geolocation" in navigator)) throw new Error("This browser does not support location access.");
+    // If the browser has already blocked this site, it will not show the prompt again.
+    if (navigator.permissions?.query) {
+      try {
+        const permission = await navigator.permissions.query({name:"geolocation"});
+        if (permission.state === "denied") {
+          throw new Error("Your browser has already blocked location for this site. Open the site permissions beside the address bar, set Location to Allow, then reload the page.");
+        }
+      } catch(e) {
+        if (e instanceof Error && /already blocked location/.test(e.message)) throw e;
+        // Some browsers do not implement the geolocation permission query.
+      }
+    }
     await getCurrentPosition();
     message("");
     connect(code,create);
   } catch(e) {
-    message("Location permission is required to join or create a room. " + locationError(e));
+    message("Location permission is required before you can create or join a room. " + locationError(e));
   } finally {
     $("createRoom").disabled=false;
     $("joinRoom").disabled=false;
