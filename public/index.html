@@ -55,7 +55,7 @@
             <div class="side-card">
               <div class="side-title">PLAYERS <span id="playerCount">0</span></div>
               <div id="playersList" class="players-list"></div>
-              <div class="side-foot">Need at least 2 players to start.</div>
+              <div class="side-foot">Need at least 2 players to start · up to 30 players (5 seekers + 25 hiders).</div>
             </div>
             <div id="hostSettings" class="side-card">
               <div class="side-title">HOST SETTINGS <span class="host-tag">HOST</span></div>
@@ -66,7 +66,7 @@
               <label for="pingInterval">HIDER PING INTERVAL</label>
               <select id="pingInterval"><option value="30">Every 30 seconds</option><option value="60" selected>Every 1 minute</option><option value="120">Every 2 minutes</option><option value="180">Every 3 minutes</option><option value="600">Every 10 minutes</option></select>
               <label for="seekersCount">NUMBER OF SEEKERS</label>
-              <select id="seekersCount"><option value="1" selected>1 seeker</option><option value="2">2 seekers</option><option value="3">3 seekers</option></select>
+              <select id="seekersCount"><option value="1" selected>1 seeker</option><option value="2">2 seekers</option><option value="3">3 seekers</option><option value="4">4 seekers</option><option value="5">5 seekers</option></select>
               <button id="saveSettings" class="secondary-btn full">Save settings</button>
               <button id="startGame" class="primary-btn full">Start game ↗</button>
               <button id="endGame" class="text-btn full hidden">End round</button>
@@ -80,6 +80,6 @@
     <footer><span>HIDEOUT © 2026</span><span>GOOD HIDING TAKES PRACTICE.</span></footer>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script type="module" src="/app.js?v=20261025-wsfix"></script>
+  <script type="module" src="/app.js?v=20261025-location-limits"></script>
 </body>
 </html>
