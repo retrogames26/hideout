@@ -57,8 +57,8 @@ class GameRoom {
           server.send(JSON.stringify({ type: "error", message: "Room not found. Ask the host to create it first." }));
           return;
         }
-        if (this.players.size >= 20) {
-          server.send(JSON.stringify({ type: "error", message: "This room is full (20 players max)." }));
+        if (this.players.size >= 30) {
+          server.send(JSON.stringify({ type: "error", message: "This room is full (30 players max: up to 5 seekers and 25 hiders)." }));
           return;
         }
         if (msg.type === "create" && this.players.size > 0) {
@@ -93,7 +93,7 @@ class GameRoom {
       if (msg.type === "settings" && playerId === this.hostId && this.phase !== "playing") {
         this.settings.radius = clamp(Number(msg.radius) || 500, 100, 2000);
         this.settings.pingInterval = clamp(Number(msg.pingInterval) || 60, 30, 600);
-        this.settings.seekersCount = clamp(Number(msg.seekersCount) || 1, 1, 3);
+        this.settings.seekersCount = clamp(Number(msg.seekersCount) || 1, 1, 5);
         if (this.boundary) this.boundary.radius = this.settings.radius;
         this.broadcastState("Settings saved.");
       } else if (msg.type === "setBoundary" && playerId === this.hostId && this.phase !== "playing") {
